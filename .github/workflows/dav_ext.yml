@@ -1,0 +1,40 @@
+name: WebDAV
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  schedule:
+    # Monday morning, so a new nginx release that breaks the module shows
+    # up here and not in somebody's build
+    - cron: '41 7 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dav_ext:
+    name: exercise the WebDAV methods
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # The suite in t/ covers the module through HTTP::DAV, which cannot drive
+    # UNLOCK; this runs the methods end to end with curl, which sends the
+    # Lock-Token the server returns, and checks PUT/GET byte for byte, the
+    # PROPFIND multistatus and the lock, unlock and relock cycle.
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup
+        with:
+          test-nginx: 'false'
+          packages: libxml2-dev libxslt1-dev
+
+      - name: Build nginx
+        run: |
+          . .github/versions.env
+          ci/build.sh "$NGINX_VERSION" "$HOME/nginx"
+
+      - name: Drive the WebDAV methods
+        run: ci/dav_ext.sh "$HOME/nginx/sbin/nginx"

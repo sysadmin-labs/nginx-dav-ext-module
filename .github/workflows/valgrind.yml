@@ -1,0 +1,50 @@
+name: Valgrind
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  schedule:
+    # Monday morning, so a new nginx release that breaks the module shows
+    # up here and not in somebody's build
+    - cron: '7 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  valgrind:
+    name: drive the module under valgrind
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # slow, and a pull request is already covered by Build & Test
+    if: github.event_name != 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup
+        with:
+          test-nginx: 'false'
+          packages: valgrind libxml2-dev libxslt1-dev
+
+      - name: Build nginx
+        run: |
+          . .github/versions.env
+          ci/build.sh "$NGINX_VERSION" "$HOME/nginx"
+
+      # The module's own t/ suite drives it through HTTP::DAV, which cannot
+      # send UNLOCK; ci/dav_ext.sh runs one foreground nginx under valgrind
+      # end to end with curl and stops it with QUIT, so the pools are freed
+      # and any leak that is left belongs to the module.
+      - name: Drive the module under valgrind
+        run: DAV_EXT_VALGRIND=1 ci/dav_ext.sh "$HOME/nginx/sbin/nginx"
+
+      - name: Keep the valgrind log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: valgrind-log
+          path: ci-work/dav_ext/logs/valgrind.log
+          if-no-files-found: ignore

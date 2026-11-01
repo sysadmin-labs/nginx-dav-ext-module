@@ -1,0 +1,21 @@
+# Memory findings that are nginx's own, not this module's.  The valgrind job
+# drives the module through ci/dav_ext.sh, which runs one foreground nginx
+# (master_process off) end to end with curl and shuts it down with QUIT, so
+# the pools are freed and whatever is left here belongs to nginx core.
+#
+# This is measured, not assumed: with an empty file the driver reports exactly
+# this one definite loss and nothing else, and no frame from
+# ngx_http_dav_ext_module.c appears in it.  nginx allocates the environment
+# array once and lets the process exit reclaim it.  If a later nginx brings a
+# new finding, valgrind prints a full trace; add it then, with a name and a
+# reason, rather than keeping one here on the chance that it is still needed.
+
+{
+   nginx keeps the environment array until the process ends
+   Memcheck:Leak
+   match-leak-kinds: definite
+   fun:malloc
+   fun:ngx_alloc
+   fun:ngx_set_environment
+   ...
+}
